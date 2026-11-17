@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NSNPPT Universal System Πu Simulation</title>
+<style>
+:root{
+  --background:#ffffff; --foreground:#1a1a1a; --muted:#f6f7f9; --muted-foreground:#5f6368;
+  --border:#dadce0; --primary:#1a73e8; --primary-foreground:#fff;
+  --green:#188038; --red:#d93025; --yellow:#e37400; --purple:#8430ce; --card:#ffffff;
+  --s1:#1a73e8; --s2:#d93025; --s3:#188038; --s4:#e37400; --s5:#8430ce; --s6:#00838f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);
+  font:14px/1.55 "Segoe UI",system-ui,sans-serif;}
+.wrap{max-width:1500px;margin:0 auto;padding:14px 16px 40px;}
+h2{margin:2px 0 2px;font-size:19px;}
+.sub{color:var(--muted-foreground);font-size:12.5px;margin-bottom:10px;}
+.badge{display:inline-block;padding:2px 10px;border-radius:11px;font-size:12px;font-weight:600;}
+.badge.ok{background:#e6f4ea;color:var(--green);}
+.badge.bad{background:#fce8e6;color:var(--red);}
+.layout{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.left{flex:1 1 880px;min-width:640px;}
+.right{flex:0 0 330px;min-width:300px;display:flex;flex-direction:column;gap:10px;}
+svg{width:100%;height:auto;display:block;}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+button{border:1px solid var(--border);background:var(--card);color:var(--foreground);
+  border-radius:8px;padding:5px 14px;font-size:13px;cursor:pointer;}
+button:hover{border-color:var(--primary);color:var(--primary);}
+button.primary{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground);}
+button:disabled{opacity:.45;cursor:default;}
+select,input[type=range]{font-size:13px;}
+.speed{display:flex;align-items:center;gap:6px;color:var(--muted-foreground);font-size:12px;}
+.kv{display:grid;grid-template-columns:120px 1fr;row-gap:4px;font-size:13px;}
+.kv .k{color:var(--muted-foreground);}
+.mono{font-family:Consolas,Menlo,monospace;}
+.regs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.reg{border:1px solid var(--border);border-radius:8px;padding:4px 6px;text-align:center;}
+.reg .rn{font-size:11px;color:var(--muted-foreground);}
+.reg .rv{font-size:16px;font-weight:600;font-family:Consolas,monospace;}
+.reg.hot{border-color:var(--primary);background:#e8f0fe;}
+.firedlist{font-size:12px;line-height:1.7;min-height:38px;}
+.firedlist b{color:var(--primary);}
+.spikes{font-family:Consolas,monospace;font-size:13px;}
+.verify{font-size:12.5px;line-height:1.8;}
+.verify table{border-collapse:collapse;font-size:12px;width:100%;}
+.verify td,.verify th{border:1px solid var(--border);padding:2px 6px;text-align:left;}
+.verify th{background:var(--muted);font-weight:600;}
+legend{font-size:12px;color:var(--muted-foreground);}
+fieldset{border:1px solid var(--border);border-radius:8px;margin:0 0 8px;padding:6px 8px;}
+.figtab{font-size:12.5px;}
+.figtab td,.figtab th{border:1px solid var(--border);padding:2px 7px;}
+.figtab th{background:var(--muted);}
+.note{color:var(--muted-foreground);font-size:12px;margin-top:6px;}
+.caseinfo{font-size:12.5px;line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>NSNPPT Universal System Π<sub>u</sub> Simulation
+    <span id="verifyBadge" class="badge ok">Verifying…</span></h2>
+  <div class="layout">
+    <div class="panel left">
+      <svg id="net" viewBox="0 0 980 880"></svg>
+      <div class="controls">
+        <button id="btnPlay" class="primary">▶ Play</button>
+        <button id="btnStep">Step ▶|</button>
+        <button id="btnReset">⟲ Reset</button>
+        <span class="speed">Speed <input id="speed" type="range" min="1" max="30" value="6" style="width:110px">
+          <span id="speedVal">6 steps/frame</span></span>
+        <span style="color:var(--muted-foreground)">Case
+          <select id="caseSel"></select></span>
+        <span class="mono" id="stepLabel" style="margin-left:auto">t = 0</span>
+      </div>
+      <div class="note" id="legend">
+        Node fill intensity ∝ |variable value|; thick blue ring = fired in this step; edge colors: green = positive weight, red = negative weight; edges thicken when firing.
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="panel">
+        <div class="kv">
+          <span class="k">Current instruction</span><span class="mono" id="curInstr">—</span>
+          <span class="k">Mu expected</span><span class="mono" id="muExpect">—</span>
+          <span class="k">Output spikes</span><span class="spikes mono" id="spikeList">—</span>
+          <span class="k">Output interval</span><span class="mono" id="interval">—</span>
+        </div>
+        <div class="firedlist" id="firedList">—</div>
+      </div>
+      <div class="panel">
+        <b style="font-size:13px">Registers r0–r7 (variable of σ<sub>r1</sub>)</b>
+        <div class="regs" id="regGrid" style="margin-top:6px"></div>
+      </div>
+      <div class="panel caseinfo" id="caseInfo"></div>
+    </div>
+  </div>
+</div>
+
+<script src="nsnppt_data.min.js"></script>
+<script>
+(function(){
+'use strict';
+var DATA = window.NSNPPT_DATA;
+var SYS = DATA.system;
+
+/* ---------------- engine: line-by-line port of nsnppt.step ---------------- */
+function buildNet(spec){
+  var order = spec.order, N = order.length;
+  var idx = {}; order.forEach(function(n,i){ idx[n] = i; });
+  var x = new Float64Array(N);
+  order.forEach(function(n,i){ x[i] = spec.init[n] || 0; });
+  var funcs = [];                              // per-neuron list of [c,k,T] or null
+  order.forEach(function(n){ funcs.push(spec.funcs[n] || null); });
+  var outE = []; for (var i=0;i<N;i++) outE.push([]);
+  spec.syn.forEach(function(e){
+    outE[idx[e[0]]].push([idx[e[1]], e[2]]);
+  });
+  return { spec: spec, order: order, idx: idx, N: N, x: x, funcs: funcs,
+           outE: outE, outName: spec.outName };
+}
+
+function step(net, t){
+  // external feed (input spikes) — same timing as Python: applied at step start
+  var feed = net.feeds && net.feeds[t];
+  if (feed) feed.forEach(function(f){ net.x[net.idx[f[0]]] += f[1]; });
+  var fired = [], N = net.N;
+  for (var i = 0; i < N; i++){
+    var fl = net.funcs[i];
+    if (!fl) continue;
+    var f = fl[0];                              // Πu: every neuron is simple
+    var pv = f[0]*net.x[i] + f[1];
+    net.x[i] = 0;                               // zero-on-compute (unconditional)
+    if (pv >= f[2]) fired.push([i, pv]);
+  }
+  var delta = new Float64Array(N);
+  fired.forEach(function(fr){
+    var eds = net.outE[fr[0]];
+    for (var j = 0; j < eds.length; j++) delta[eds[j][0]] += eds[j][1]*fr[1];
+  });
+  for (var k = 0; k < N; k++) if (delta[k]) net.x[k] += delta[k];
+  var env = 0;
+  fired.forEach(function(fr){ if (net.order[fr[0]] === net.outName) env = fr[1]; });
+  return { fired: fired, env: env };
+}
+
+/* ---------------- hashing (identical scheme to export_nsnppt.py) ---------- */
+function fnv(vec){
+  var h = 2166136261;
+  for (var i = 0; i < vec.length; i++){
+    var v = vec[i] | 0;
+    for (var b = 0; b < 4; b++){
+      h = Math.imul(h ^ ((v >>> (8*b)) & 255), 16777619) >>> 0;
+    }
+  }
+  return h >>> 0;
+}
+/* compact SHA-256 over the serialized trace (utf8 of ascii lines) */
+function sha256(ascii){
+  function rotr(x,n){ return (x>>>n)|(x<<(32-n)); }
+  var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,
+    0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,
+    0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,
+    0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,
+    0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,
+    0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,
+    0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,
+    0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,
+    0xbef9a3f7,0xc67178f2];
+  var msg = unescape(encodeURIComponent(ascii));
+  var l = msg.length;
+  var words = [];
+  for (var i = 0; i < l; i++) words[i>>2] = (words[i>>2]||0) | (msg.charCodeAt(i) << (24 - (i%4)*8));
+  words[l>>2] = (words[l>>2]||0) | (0x80 << (24 - (l%4)*8));
+  var nWords = (((l + 8) >> 6) + 1) * 16;
+  words[nWords-1] = l*8;
+  for (var w = (l>>2)+1; w < nWords; w++) words[w] = words[w] || 0;
+  var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  var w = new Array(64);
+  for (var j = 0; j < nWords; j += 16){
+    for (var i2 = 0; i2 < 16; i2++) w[i2] = words[j+i2]|0;
+    for (var i3 = 16; i3 < 64; i3++){
+      var s0 = rotr(w[i3-15],7)^rotr(w[i3-15],18)^(w[i3-15]>>>3);
+      var s1 = rotr(w[i3-2],17)^rotr(w[i3-2],19)^(w[i3-2]>>>10);
+      w[i3] = (w[i3-16]+s0+w[i3-7]+s1)|0;
+    }
+    var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for (var i4 = 0; i4 < 64; i4++){
+      var S1 = rotr(e,6)^rotr(e,11)^rotr(e,25);
+      var ch = (e&f)^(~e&g);
+      var t1 = (h+S1+ch+K[i4]+w[i4])|0;
+      var S0 = rotr(a,2)^rotr(a,13)^rotr(a,22);
+      var mj = (a&b)^(a&c)^(b&c);
+      var t2 = (S0+mj)|0;
+      h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2)|0;
+    }
+    H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+  }
+  return H.map(function(v){ return ('00000000'+(v>>>0).toString(16)).slice(-8); }).join('');
+}
+
+/* ---------------- run a case in JS, verify against Python ---------------- */
+function runCase(cs){
+  var net = buildNet(SYS);
+  net.feeds = {};
+  [1, cs.hx+1, cs.hx+cs.y+1].forEach(function(t){ net.feeds[t] = [['in', 1]]; });
+  var lines = [], sampled = [], states = [], spikes = [], instrEv = [];
+  var stride = cs.shaStride || 1;
+  for (var t = 0; t < cs.runSteps; t++){
+    var r = step(net, t);
+    r.fired.forEach(function(fr){
+      var nm = net.order[fr[0]];
+      if (nm.charAt(0) === 'l' && nm.indexOf('_') < 0) instrEv.push([t, nm]);
+    });
+    if (r.env !== 0) spikes.push(t);
+    var vec = Array.prototype.slice.call(net.x, 0).map(Math.round);
+    states.push(vec);
+    if (t % stride === 0) sampled.push(vec.join(','));
+  }
+  sampled.push(states[cs.runSteps-1].join(','));
+  var fnvOk = 0, fnvTot = 0, fnvBad = [];
+  Object.keys(cs.pyFnv).forEach(function(ts){
+    fnvTot++;
+    if (fnv(states[+ts]) === cs.pyFnv[ts]) fnvOk++; else fnvBad.push('t='+ts);
+  });
+  var shaOk = sha256(sampled.join('\n')) === cs.pySha;
+  var instrShaOk = sha256(instrEv.map(function(e){ return e[0]+':'+e[1]; }).join('\n'))
+    === cs.instrSha;
+  var spikeOk = JSON.stringify(spikes) === JSON.stringify(cs.spikes);
+  return { net: net, states: states, spikes: spikes, instrEv: instrEv,
+           fnvOk: fnvOk, fnvTot: fnvTot, fnvBad: fnvBad,
+           shaOk: shaOk, instrShaOk: instrShaOk, spikeOk: spikeOk };
+}
+
+/* ---------------- SVG rendering ---------------- */
+var svg = document.getElementById('net');
+var NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent){
+  var e = document.createElementNS(NS, tag);
+  for (var k in attrs) e.setAttribute(k, attrs[k]);
+  (parent || svg).appendChild(e);
+  return e;
+}
+var COL = {};
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function refresh(){ COL = {fg:cssVar('--foreground'), mut:cssVar('--muted-foreground'),
+  border:cssVar('--border'), primary:cssVar('--primary'), red:cssVar('--red'),
+  green:cssVar('--green'), yellow:cssVar('--yellow'), purple:cssVar('--purple')}; }
+refresh();
+
+var layout = {};      // name -> {x, y, col}
+var nodeEls = {};     // name -> {circle, text, val}
+var edgeEls = [];     // {line, src, w}
+
+function buildLayout(){
+  var colX = { input: 60, reg: 190, instr: 400, aux: 620, output: 900 };
+  var used = {};
+  SYS.order.forEach(function(n){
+    var ty = SYS.types[n], col = colX[ty] || 700;
+    if (ty === 'aux'){
+      // group aux neurons by their instruction prefix
+      var m = n.match(/^l(\d+)_(\d+)$/);
+      var base = +m[1], j = +m[2];
+      col = colX.aux + (base % 3) * 110;
+    }
+    var key = ty === 'aux' ? 'aux' + (n.match(/^l(\d+)_/)[1] % 3) : ty;
+    var i = used[key] = (used[key] || 0) + 1;
+    layout[n] = { x: col, y: 30 + (i-1) * ((key.indexOf('aux')===0) ? 30 : 40) };
+  });
+  // compact the aux columns: count per column
+  ['input','reg','instr','output'].forEach(function(k){
+    used[k] = used[k] || 0;
+  });
+}
+function buildSVG(){
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  buildLayout();
+  // edges first (under nodes)
+  var gE = el('g', {});
+  SYS.syn.forEach(function(e){
+    var a = layout[e[0]], b = layout[e[1]];
+    if (!a || !b) return;
+    var ln = el('line', { x1:a.x, y1:a.y, x2:b.x, y2:b.y,
+      stroke: e[2] < 0 ? 'var(--red)' : 'var(--green)',
+      'stroke-width': Math.abs(e[2]) > 1 ? 1.6 : .7, 'stroke-opacity': .18 }, gE);
+    edgeEls.push({ ln: ln, src: e[0], w: e[2] });
+  });
+  // column headers
+  var heads = [['input', 26, 'INPUT module'], ['reg', 26, 'Register pairs'],
+               ['instr', 26, 'Instruction neurons'], ['output', 26, 'OUTPUT module']];
+  heads.forEach(function(hd){
+    var t = el('text', { x: layout[hd[0] === 'input' ? 'in' : hd[0] === 'reg' ? 'r0_1' :
+      hd[0] === 'instr' ? 'l0' : 'out'].x - 14, y: 14, 'font-size': 11,
+      fill: 'var(--muted-foreground)' });
+    t.textContent = hd[2];
+  });
+  // nodes
+  SYS.order.forEach(function(n){
+    var p = layout[n], ty = SYS.types[n];
+    var r = ty === 'reg' ? 10 : ty === 'instr' ? 9.5 : 6.5;
+    var c = el('circle', { cx: p.x, cy: p.y, r: r, fill: 'transparent',
+      stroke: 'var(--border)', 'stroke-width': 1 });
+    var t = el('text', { x: p.x, y: p.y - r - 5, 'font-size': ty === 'aux' ? 7 : 9,
+      'text-anchor': 'middle', fill: 'var(--muted-foreground)' });
+    t.textContent = n;
+    nodeEls[n] = { circle: c, text: t, r: r };
+  });
+}
+function drawStep(run, t){
+  var st = run.states[t];
+  var firedMap = {};
+  var firedNow = {};
+  // figure out who fired at step t: x[t+1] would be needed; recompute cheaply:
+  // we stored instrEv and spikes; for generic firing we re-simulate single step
+  // (cheap: N=115) using the state at t-1. Simpler: precomputed in run.firedAt[t]
+  run.firedAt[t].forEach(function(nm){ firedNow[nm] = 1; });
+  SYS.order.forEach(function(n, i){
+    var v = st[i], ne = nodeEls[n];
+    var inten = Math.min(1, Math.abs(v) / 6);
+    if (firedNow[n]){
+      ne.circle.setAttribute('fill', 'var(--primary)');
+      ne.circle.setAttribute('fill-opacity', .85);
+      ne.circle.setAttribute('stroke', 'var(--primary)');
+      ne.circle.setAttribute('stroke-width', 2.4);
+    } else if (v !== 0){
+      ne.circle.setAttribute('fill', v > 0 ? 'var(--yellow)' : 'var(--red)');
+      ne.circle.setAttribute('fill-opacity', .12 + .5*inten);
+      ne.circle.setAttribute('stroke', v > 0 ? 'var(--yellow)' : 'var(--red)');
+      ne.circle.setAttribute('stroke-width', 1.1);
+    } else {
+      ne.circle.setAttribute('fill', 'transparent');
+      ne.circle.setAttribute('fill-opacity', 0);
+      ne.circle.setAttribute('stroke', 'var(--border)');
+      ne.circle.setAttribute('stroke-width', 1);
+    }
+    if (SYS.types[n] !== 'aux' || v !== 0){
+      ne.text.setAttribute('fill', v !== 0 ? 'var(--foreground)' : 'var(--muted-foreground)');
+    }
+  });
+  edgeEls.forEach(function(e){
+    if (firedNow[e.src]){
+      e.ln.setAttribute('stroke-opacity', .95);
+      e.ln.setAttribute('stroke-width', Math.abs(e.w) > 1 ? 2.4 : 1.6);
+    } else {
+      e.ln.setAttribute('stroke-opacity', .18);
+      e.ln.setAttribute('stroke-width', Math.abs(e.w) > 1 ? 1.6 : .7);
+    }
+  });
+}
+
+/* ---------------- UI plumbing ---------------- */
+var run = null, caseData = null, t = 0, timer = null;
+var $ = function(id){ return document.getElementById(id); };
+
+function fmtSpikes(sp){
+  return sp.length ? sp.join(', ') : '—';
+}
+function refreshPanel(){
+  $('stepLabel').textContent = 't = ' + t + ' / ' + (caseData.runSteps - 1);
+  var last = null;
+  for (var i = 0; i < run.instrEv.length; i++){
+    if (run.instrEv[i][0] <= t) last = run.instrEv[i]; else break;
+  }
+  $('curInstr').textContent = last ? (last[1] + ' @ t=' + last[0]) : '(input loading)';
+  $('spikeList').textContent = fmtSpikes(run.spikes.filter(function(s){ return s <= t; }));
+  var got = run.spikes.filter(function(s){ return s <= t; });
+  $('interval').textContent = got.length >= 2 ?
+    ('(t' + got[1] + ') − (t' + got[0] + ') = ' + (got[1] - got[0]) +
+     (got.length >= 2 && got[1]-got[0] === caseData.result ? ' = result ✓' : '')) : '…';
+  $('muExpect').textContent = 'Mu(' + caseData.hx + ',' + caseData.y + ') = ' +
+    caseData.result + ' (' + caseData.muSteps + ' instructions)';
+  // fired list at step t
+  var fl = run.firedAt[t] || [];
+  $('firedList').innerHTML = fl.length ?
+    't=' + t + ' firing: ' + fl.map(function(n){ return '<b>' + n + '</b>'; }).join(', ') : 't=' + t + ' no firing';
+  // registers
+  for (var r = 0; r < 8; r++){
+    var v = run.states[t][run.net.idx['r' + r + '_1']];
+    var elr = $('reg' + r);
+    elr.textContent = v;
+    $('regc' + r).className = 'reg' + (run.firedAt[t].indexOf('r' + r + '_1') >= 0 ? ' hot' : '');
+  }
+  drawStep(run, t);
+}
+function buildRegGrid(){
+  var g = $('regGrid');
+  g.innerHTML = '';
+  for (var r = 0; r < 8; r++){
+    var d = document.createElement('div');
+    d.className = 'reg'; d.id = 'regc' + r;
+    d.innerHTML = '<div class="rn">r' + r + '</div><div class="rv" id="reg' + r + '">0</div>';
+    g.appendChild(d);
+  }
+}
+function loadCase(i){
+  caseData = DATA.cases[i];
+  run = runCase(caseData);
+  // per-step fired names (re-simulate once, cheap)
+  run.firedAt = [];
+  var net2 = buildNet(SYS);
+  net2.feeds = {};
+  [1, caseData.hx+1, caseData.hx+caseData.y+1].forEach(function(tt){ net2.feeds[tt] = [['in', 1]]; });
+  for (var tt = 0; tt < caseData.runSteps; tt++){
+    var r = step(net2, tt);
+    run.firedAt.push(r.fired.map(function(fr){ return net2.order[fr[0]]; }));
+  }
+  t = 0;
+  buildRegGrid();
+  buildSVG();
+  // case info
+  $('caseInfo').innerHTML =
+    '<b>Case Mu(' + caseData.hx + ', ' + caseData.y + ')</b><br>' +
+    'Input code h(x) = ' + caseData.hx + ', y = ' + caseData.y +
+    ' (spike train 1 0<sup>' + (caseData.hx-1) + '</sup> 1 0<sup>' + (caseData.y-1) + '</sup> 1)<br>' +
+    'Mu direct execution: ' + caseData.muSteps + ' instructions, result φ = <b>' + caseData.result + '</b><br>' +
+    'Πu simulation (115-neuron fused): ' + caseData.runSteps + ' steps, σout spikes at t = ' +
+    caseData.spikes.join(', ') + ', interval = <b>' + caseData.interval + '</b>' +
+    '<br>118-neuron unfused: instruction sequence matches Mu step by step' +
+    ', output interval = ' + caseData.unoptInterval;
+  var allOk = run.fnvOk === run.fnvTot && run.shaOk && run.instrShaOk && run.spikeOk;
+  var b = $('verifyBadge');
+  b.textContent = allOk ? ' Replay verified ' : ' Verification failed ';
+  b.className = 'badge ' + (allOk ? 'ok' : 'bad');
+  refreshPanel();
+}
+function play(){
+  if (timer) return;
+  $('btnPlay').textContent = '⏸ Pause';
+  timer = setInterval(function(){
+    var sp = +$('speed').value;
+    for (var i = 0; i < sp; i++){
+      if (t >= caseData.runSteps - 1){ pause(); break; }
+      t++;
+    }
+    refreshPanel();
+  }, 40);
+}
+function pause(){
+  if (timer){ clearInterval(timer); timer = null; }
+  $('btnPlay').textContent = '▶ Play';
+}
+$('btnPlay').onclick = function(){ timer ? pause() : play(); };
+$('btnStep').onclick = function(){ pause(); if (t < caseData.runSteps-1){ t++; refreshPanel(); } };
+$('btnReset').onclick = function(){ pause(); t = 0; refreshPanel(); };
+$('speed').oninput = function(){ $('speedVal').textContent = this.value + ' steps/frame'; };
+$('caseSel').onchange = function(){ pause(); loadCase(+this.value); };
+
+/* ---------------- init ---------------- */
+DATA.cases.forEach(function(c, i){
+  var o = document.createElement('option');
+  o.value = i;
+  o.textContent = 'Mu(' + c.hx + ', ' + c.y + ') → ' + c.result;
+  $('caseSel').appendChild(o);
+});
+loadCase(0);
+})();
+</script>
+</body>
+</html>

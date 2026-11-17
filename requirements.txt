@@ -1,0 +1,2 @@
+# NSNPPT 复现依赖 — 其余均为 Python 标准库
+matplotlib>=3.5
